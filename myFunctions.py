@@ -24,6 +24,202 @@ def f_closest(array,value):
 
 
 
+# function to plot wind rose from an input dictionary of data
+#---------------------------------------------------------------------------------
+# date :  18.12.2018
+# author: Claudia Acquistapace (cacquist@meteo.uni-koeln.de), Davide Ori
+# goal: plot wind rose from an input dictionary of data
+# input: Dictionary of the form:
+#dict_windRose = {'windDir':wd_ICON_INSCAPE, 'windSpeed':ws_ICON_INSCAPE, 'maxSpeed':15, \
+#                'minSpeed':0., 'Speed_res':3, 'NstepsSpeed':5,  '%min':0, '%max':30, '%step':5, \
+#                'title':'wind rose - ICON-INSCAPE', 'modelName':'ICON-INSCAPE', 'titleFont':16, \
+#                'legendPosition':'lower left', 'legendFont':14, 'date':'20130502', 'outFile':pathFig+'WindRose_ICON_INSCAPE_20130502.png'}
+# meaning of the items of the dictionary
+# - 'windDir': wind direction array or list
+# - 'windSpeed': wind speed array or list
+# - 'maxSpeed': maximum value of wind speed to be visualized in the legend
+# - 'minSpeed': minimum value of wind speed to be visualized in the legend
+# - 'Speed_res': resolution for the wind speed colors of the legend 
+# - 'NstepsSpeed': number of colors to be used. It has to be an integer resulting from the division of 'maxSpeed'/'Speed_res',
+# so for example, 15/3 = 5
+# - '%min': minimum percentage of occurrence of wind values in the rose
+# - '%max': maximum percentage of occurrence of wind values in the rose
+# - '%step': resolution step for percentage in concentric circles
+# - 'title': title of the plot
+# - 'model/Obs Name': name of the dataset ( model or obs)
+# - 'titleFont' : font size of the title
+# - 'legendPosition': position of the legend
+# - 'legendFont': font size of the legend
+# - 'date': date of the dataset
+# - 'outFile': output filename (including path)
+# output:
+# - png plot in the folder indicated by outFile
+#--------------------------------------------------------------------------------
+def f_plotWindRose(Dict):
+    
+    from windrose import WindroseAxes
+    bins_range = np.arange(Dict['minSpeed'],Dict['maxSpeed'],Dict['Speed_res']) # this sets the legendscale
+    ax = WindroseAxes.from_ax()
+    bars = ax.bar(Dict['windDir'], Dict['windSpeed'], normed=True, bins=bins_range)
+    ax.set_yticks(np.arange(Dict['%min'], Dict['%max'], step=Dict['%step']))
+    ax.set_yticklabels(np.arange(Dict['%min'], Dict['%max'], step=Dict['%step']))
+    ax.set_title(Dict['title'], fontsize=Dict['titleFont'])
+    L=ax.legend(loc=Dict['legendPosition'], fontsize=Dict['legendFont'])
+    for ind in range(Dict['NstepsSpeed']):
+        L.get_texts()[ind].set_text(L.get_texts()[ind].get_text()+' m/s')
+            #L.get_texts()[1].set_text(L.get_texts()[1].get_text()+' m/s')
+            #L.get_texts()[2].set_text(L.get_texts()[2].get_text()+' m/s')
+            #L.get_texts()[3].set_text(L.get_texts()[3].get_text()+' m/s')
+            #L.get_texts()[4].set_text(L.get_texts()[4].get_text()+' m/s')
+        #plt.show()
+       #fig.plt()
+    plt.savefig(Dict['outFile'])
+
+
+
+    
+# function to derive wind speed and direction
+#---------------------------------------------------------------------------------
+# date :  17.12.2018
+# author: Claudia Acquistapace (cacquist@meteo.uni-koeln.de)
+# goal: derive wind speed and direction in form of list and matrices
+# input: 
+# - datetime_ICON: time array
+# - height_ICON: height array
+# - u_ms: zonal wind
+# - v_ms: meridional wind
+# output:
+# - ws: list of wind speed
+# - wd: list of wind directions
+# - wind_abs: matrix of wind speed
+# - wind_dir_trig_from_degrees: matrix of wind direction in degrees indicating the direction from where wind is coming
+#--------------------------------------------------------------------------------
+def f_calcWindSpeed_Dir(datetime_ICON, height_ICON, u_ms, v_ms):
+    import math
+    wind_abs                   = np.sqrt(u_ms**2 + v_ms**2)
+    wind_dir_trig_to           = np.zeros((len(datetime_ICON),len(height_ICON)))
+    wind_dir_trig_to_degrees   = np.zeros((len(datetime_ICON),len(height_ICON)))
+    wind_dir_trig_from_degrees = np.zeros((len(datetime_ICON),len(height_ICON)))
+    wind_dir_cardinal          = np.zeros((len(datetime_ICON),len(height_ICON)))
+    ws                         = []
+    wd                         = []
+    for itime in range(len(datetime_ICON)):
+        for iHeight in range(len(height_ICON)):
+            # wind dir in unit circle coordinates (wind_dir_trig_to), which increase counterclockwise and have a zero on the x-axis
+            wind_dir_trig_to[itime, iHeight]           = math.atan2(v_ms[itime, iHeight],u_ms[itime, iHeight]) 
+            # wind dir in degrees (wind_dir_trig_to_degrees) dir where wind goes
+            wind_dir_trig_to_degrees[itime, iHeight]   = wind_dir_trig_to[itime, iHeight] * 180/math.pi ## -111.6 degrees  
+            # wind dir in degrees (wind_dir_trig_to_degrees) dir from where wind comes
+            wind_dir_trig_from_degrees[itime, iHeight] = wind_dir_trig_to_degrees[itime, iHeight] + 180 ## 68.38 degrees
+            # wind dir in cardinal coordinates from the wind dir in degrees (wind_dir_trig_to_degrees) dir from where wind comes
+            wind_dir_cardinal[itime, iHeight]          = 90 - wind_dir_trig_from_degrees[itime, iHeight]
+            if np.isfinite(wind_dir_trig_from_degrees[itime, iHeight]) and np.isfinite(wind_abs[itime, iHeight]) and             (wind_abs[itime, iHeight] != 0.):
+                wd.append(wind_dir_trig_from_degrees[itime, iHeight])
+                ws.append(wind_abs[itime, iHeight])
+    return(ws, wd, wind_abs, wind_dir_trig_from_degrees)
+
+
+
+
+
+# function to plot color time height maps from a dictionary of initial data
+#---------------------------------------------------------------------------------
+# date :  14.12.2018
+# author: Claudia Acquistapace (cacquist@meteo.uni-koeln.de)
+# goal: function to plot color time heigth maps from a dictionary of initial data
+# input: 
+# dictionary containing all infos necessary for plotting
+# output:
+# plot in pdf format
+#--------------------------------------------------------------------------------
+def f_plotTimeHeightColorMaps(Dict):
+    matplotlib.rc('xtick', labelsize=15)                        # sets dimension of ticks in the plots
+    matplotlib.rc('ytick', labelsize=15)                        # sets dimension of ticks in the plots
+    fig, ax = plt.subplots(figsize=(14,6))
+    # formatting x axis for datetime plotting
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%H:%M"))
+    ax.xaxis.set_minor_formatter(mdates.DateFormatter("%H:%M"))
+    ax.xaxis_date()
+    # calling pcolormesh to plot data
+    cax = ax.pcolormesh(Dict['xvar'], Dict['yvar'], Dict['colorVar'], vmin=Dict['colorVarMin'],                         vmax=Dict['colorVarMax'], cmap = matplotlib.cm.get_cmap(Dict['colorPalette']))
+    ax.set_ylim(Dict['ymin'],Dict['ymax'])                                               # limits of the y-axes
+    ax.set_title(Dict['title'], fontsize=Dict['titleFont'])
+    ax.set_xlabel(Dict['xlabel'], fontsize=Dict['xFont'])
+    ax.set_ylabel(Dict['ylabel'], fontsize=Dict['yFont'])
+    cbar = fig.colorbar(cax, orientation='vertical')
+    cbar.set_label(label=Dict['ColorVarLabel'],size=Dict['ColorBarFont'])
+    cbar.ax.tick_params(labelsize=16)
+    cbar.aspect=80
+    plt.savefig(Dict['outFile'], format='png')
+    
+
+# function to plot color time heigth maps from a dictionary of initial data
+#---------------------------------------------------------------------------------
+# date :  14.12.2018
+# author: Claudia Acquistapace (cacquist@meteo.uni-koeln.de)
+# goal: function to derive pdfs of vertical and horizontal wind below cloud base
+# check for vertical wind values observed below cloud base. for every time stamp. 
+# methodology: for observations: 
+# if there is cloud base in observations, store vertical wind values recorded in the 300m below cloud base.
+# if there is no cloud, store vertical wind values in the 5 bins below mean estimated cloud base.
+# input : vertical wind, horizontal wind, time, height
+# output: verticalWindPDF_cloud, verticalWindPDF_nocloud, horizontalWindPDF_cloud, horizontalWindPDF_nocloud
+#--------------------------------------------------------------------------------
+def f_pdfsBelowCloudBase(w_ICON, Hwind, datetime_ICON, height_ICON, mean_CB_arr_OBS, CB_array_OBS):
+
+    verticalWindPDF_cloud         = []
+    horizontalWindPDF_cloud       = []
+    verticalWindPDF_nocloud       = []
+    horizontalWindPDF_nocloud     = []
+
+    distHeight                    = 400.
+    vertWind_ICON_DF              = pd.DataFrame(w_ICON, index=datetime_ICON, columns=height_ICON)
+    HorWind_ICON_DF               = pd.DataFrame(Hwind, index=datetime_ICON, columns=height_ICON)
+    limTimeInf                    = datetime.datetime(2013, 5, 2, 9, 0, 0)
+    limTimeSup                    = datetime.datetime(2013, 5, 2, 18, 0, 0)
+    
+    # establishing height below which to check for wind
+    for indTime in range(len(datetime_ICON)):
+        if (datetime_ICON[indTime] > limTimeInf) * (datetime_ICON[indTime] < limTimeSup):
+            
+            # case of no clouds, read mean cloud base height in the hour and extract height
+            if np.isfinite(CB_array_OBS[indTime]) == False:
+                findHourInd           = f_closest(np.asarray(datetimeHourArr), datetime_ICON[indTime])
+                CBHeight              = mean_CB_arr_OBS[findHourInd]
+
+                mask_h_vertWind           = (vertWind_ICON_DF.columns < CBHeight) * (vertWind_ICON_DF.columns > CBHeight-distHeight)
+                valuesWwind               =  vertWind_ICON_DF.values[indTime, mask_h_vertWind].flatten()
+                mask_h_horwind            = (HorWind_ICON_DF.columns < CBHeight) * (HorWind_ICON_DF.columns > CBHeight-distHeight)
+                valuesHwind               =  HorWind_ICON_DF.values[indTime, mask_h_horwind].flatten()        
+                for indValw in range(len(valuesWwind)):
+                    verticalWindPDF_nocloud.append(valuesWwind[indValw])
+                for indValh in range(len(valuesHwind)):
+                    horizontalWindPDF_nocloud.append(valuesHwind[indValh])
+
+
+
+            # case of clouds: read cloud base height and extract bins below.
+            else:
+                CBHeight              = CB_array_OBS[indTime]
+
+                mask_h_vertWind           = (vertWind_ICON_DF.columns < CBHeight) * (vertWind_ICON_DF.columns > CBHeight-distHeight)
+                valuesWwind               =  vertWind_ICON_DF.values[indTime, mask_h_vertWind].flatten()
+                mask_h_horwind            = (HorWind_ICON_DF.columns < CBHeight) * (HorWind_ICON_DF.columns > CBHeight-distHeight)
+                valuesHwind               =  HorWind_ICON_DF.values[indTime, mask_h_horwind].flatten() 
+
+                for indValw in range(len(valuesWwind)):
+                    verticalWindPDF_cloud.append(valuesWwind[indValw])
+                for indValh in range(len(valuesHwind)):
+                    horizontalWindPDF_cloud.append(valuesHwind[indValh])    
+        
+    return(verticalWindPDF_cloud, verticalWindPDF_nocloud, horizontalWindPDF_cloud, horizontalWindPDF_nocloud)    
+
+
+
+
+
+
+
 # function to calculate the convective condensation level height and temperature
 #---------------------------------------------------------------------------------
 # date :  17.05.2018
@@ -784,6 +980,54 @@ def f_PBLClass(time,height,gradWindThr,SigmaWThres,ylim, cloudMask, varianceWmat
 #  "total water content (ice + liquid water)", 31
 #  "ice content" ; 32
 
+
+# function to calculate moist adiabatic lapse rate from temperature and mixing ratio
+# date: 11 July 2018, Vancouver
+# author: claudia Acquistapace
+# input: height dimension, time dimension, mixing ratio, temperature and pressure matrix in time, height, lcl height array.
+# output: EIS height array
+# notes: EIS is calculated here as indicated in eq 3 of Wood and Bretherton, 2006: On the Relationship between Stratiform Low Cloud Cover and Lower-Tropospheric Stability (Journal of Climate)
+def f_calcEIS(dimHeight, dimTime, height, mr, T, P, lcl, LTS):
+    
+    g = 9.8 # gravitational constant [ms^-2]
+    Cp = 1005.7 # specific heat at constant pressure of air [J K^-1 Kg^-1]
+    Lv = 2256 # latent heat of vaporization of water [kJ/kg]
+    R = 8.314472 # gas constant for dry air [J/ molK]
+    epsilon = 0.622 # ratio of the gas constants of dry air and water vapor
+
+    # calculating moist adiabatic lapse rate
+    gamma_moist =  np.zeros((dimTime,dimHeight))
+
+    for indTime in range(dimTime):
+        for indHeight in range(dimHeight):
+            #print( (R*T[indTime,indHeight] ))
+            #print(T[indTime,indHeight])
+        
+            gamma_moist[indTime,indHeight] = g*( 1.+ (Lv*mr[indTime,indHeight] )/(R*T[indTime,indHeight] ) \
+                                            / Cp + ((Lv**2) * epsilon * mr[indTime,indHeight] )/(R*T[indTime,indHeight]**2)  )
+
+            
+    # finding height corresponding to 700 HPa
+    z_700 = []
+    gamma_moist_700 = []
+    gamma_lcl = []
+    EIS = []
+
+    for indTime in range(dimTime):
+        ind_height_700 = f_closest(P[indTime,:], 70000.)
+        ind_lcl = f_closest(height, lcl[indTime])
+        z_700.append(((R*T[indTime,0])/g)*np.log(P[indTime,0]/70000.))
+        gamma_moist_700.append(gamma_moist[indTime,ind_height_700])
+        gamma_lcl.append(gamma_moist[indTime,ind_lcl])
+    
+    for indTime in range(dimTime):
+        EIS.append(LTS[indTime] - (gamma_moist_700[indTime]*z_700[indTime]*0.001 + gamma_lcl[indTime]*lcl[indTime]*0.001))
+
+
+    return EIS
+
+
+
 # Version 1.0 released by David Romps on September 12, 2017.
 # 
 # When using this code, please cite:
@@ -914,3 +1158,59 @@ def lcl(p,T,rh=None,rhl=None,rhs=None,return_ldl=False,return_min_lcl_ldl=False)
 def f_histo(sample, bins):
      pylab.hist(sample, bins=50, range=(-5.5), histtype = 'step', color = 'black')
      pylab.show()
+    
+    
+    
+    
+# function to resample a matrix to the time/height resolution of another one
+#---------------------------------------------------------------------------------
+# date :  05.10.2018
+# author: Claudia Acquistapace
+# goal: function to resample a given matrix to the resolution of another one provided as imput
+# input: 
+# - time2change
+# - height2change
+# - matrix2change
+# - timeRef
+# - heightRef
+# - matrixRef[timeRef, heightRef] reference data matrix
+# output:
+# - matrixResampled: pandas masked array of moments resampled to new resolution in time/height
+# subfunctions called: 
+# -- getIndexList
+# -- getResampledDataPd
+#--------------------------------------------------------------------------------
+def f_resamplingMatrix(time2change, height2change, matrix2change, timeRef, heightRef, matrixRef):
+    
+
+    # resampling Cloudnet observations on ICON time/height resolution
+    # ---- defining ICON data as dataframe reference
+    ICON_DF= pd.DataFrame(matrixRef, index=timeRef, columns=heightRef)
+    values = np.empty((len(timeRef), len(height2change)))
+
+    # ---- resampling PBL classification on ICON resolution
+    print('resampling CLOUDNET observations on ICON time resolution')
+    ZE_DF = pd.DataFrame(matrix2change, index=time2change, columns=height2change)
+    SelectedIndex_ZE = getIndexList(ZE_DF, ICON_DF.index)
+    ZE_resampled = pd.DataFrame(values, index=timeRef, columns=height2change)
+    ZE_resampled = getResampledDataPd(ZE_resampled, ZE_DF, SelectedIndex_ZE)
+
+    # ---- defining ICON data as dataframe reference
+    ICON_DF_T= pd.DataFrame(matrixRef.transpose(), index=heightRef, columns=timeRef)
+    ZE_values = ZE_resampled.values.transpose()
+    ZEFinal_DF = pd.DataFrame(ZE_values, index=height2change, columns=timeRef)
+    Selectedcol_ZEfinal = getIndexList(ZEFinal_DF, ICON_DF_T.index)
+    # define empty values for dataframe finer resolved
+    values_ZEfinal = np.empty((len(heightRef), len(timeRef)))
+
+    # define dataframe coarse resolution
+    ZE_less = pd.DataFrame(ZE_values, index=height2change, columns=timeRef)
+    # define output dataframe with resolution as icon
+    ZE = pd.DataFrame(values_ZEfinal, index=heightRef, columns=timeRef)
+    ZE = getResampledDataPd(ZE, ZE_less, Selectedcol_ZEfinal)  
+    matrix = np.ma.array(ZE.values,mask=np.isnan(ZE.values))
+    return(matrix)
+    
+
+
+
